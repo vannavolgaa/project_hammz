@@ -295,19 +295,6 @@ class MarketLoader:
         dates = [fq.reference_time for fq in fquotes]
         return TimeSerie(dict(zip(dates,markprices)))
 
-    def get_risk_factor_atm_factor_time_serie(
-            self, 
-            risk_factor: RiskFactor, 
-            reference_time: datetime, 
-            time_delta:timedelta) -> TimeSerie: 
-        start_date = reference_time - time_delta
-        output = dict()
-        for m in self.markets: 
-            mdate = m.reference_time
-            if mdate>=start_date and mdate<=reference_time: 
-                if m.risk_factor == risk_factor: 
-                    output[mdate] = m.atm_factor
-        return TimeSerie(output)
 
     def get_instrument_log_return(
             self, 
@@ -320,65 +307,6 @@ class MarketLoader:
         start, end = ts.datamap[min(dates)], ts.datamap[max(dates)]
         return np.log(end) - np.log(start)
     
-    def plot_realized_volatility_model_fit(self, 
-            instrument_name: str, 
-            reference_time: datetime, 
-            time_delta:timedelta) -> None: 
-        ts = self.get_instrument_mark_price_time_serie(
-            instrument_name, reference_time, time_delta)
-        egarch = ts.skewed_student_egarch_fit()
-        vol = egarch.conditional_volatility
-        ret = ts.log_difference
-        dates = list(ts.datamap.keys())
-        dates = dates[1:len(dates)]
-        title = instrument_name + ' fit @ ' + \
-        reference_time.strftime('%Y-%m-%d %H:%M:%S')
-        plt.plot(dates,ret)
-        plt.plot(dates,-vol, color = 'red')
-        plt.plot(dates,vol, color = 'red')
-        plt.title(title)
-        plt.show()
-
-    def get_realized_volatility_forecast(
-            self, 
-            risk_factor: RiskFactor, 
-            reference_time: datetime) -> float: 
-        delta_time = BacktestParameters.garch_time_delta
-        instrument_name = risk_factor.base_currency.code + '-PERPETUAL'
-        dt = 365*24
-        ts = self.get_instrument_mark_price_time_serie(
-            instrument_name,
-            reference_time,
-            delta_time) 
-        egarch = ts.skewed_student_egarch_fit()
-        params = egarch.params
-        res, condsigmas = egarch.resid, egarch.conditional_volatility
-        e, s = res[len(res)-1], condsigmas[len(condsigmas)-1]
-        omega = params['omega'].item()
-        alpha = params['alpha[1]'].item()
-        beta = params['beta[1]'].item()
-        _gamma = params['gamma[1]'].item()
-        variance = np.exp(omega + alpha*(np.abs(e/s) - np.sqrt(2/np.pi))
-        +_gamma*(e/s)+beta*np.log(s**2))
-        vol = np.sqrt(dt)*np.sqrt(variance)
-        return vol.item()
-    
-    def get_implied_volatility_log_change_forecast(
-            self, 
-            risk_factor: RiskFactor, 
-            reference_time: datetime) -> float: 
-        dt = BacktestParameters.auto_regressive_time_delta
-        ts = self.get_risk_factor_atm_factor_time_serie(
-            risk_factor, reference_time,dt)
-        ar = ts.ar_12lag_fit()
-        ivlc = ar.params['Const'].item()
-        lr = ts.log_difference
-        n = len(lr)
-        for i in range(1,13): 
-            name = 'y['+str(i)+']'
-            r,a = lr[len(lr)-i], ar.params[name].item()
-            ivlc = ivlc + r*a
-        return ivlc.item()
         
     def get_date_vector_for_backtest(self) -> List[datetime]: 
         min_date = min(self.dates_dt)
